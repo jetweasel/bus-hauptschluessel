@@ -4,6 +4,12 @@
 # Creates the main key, stores it in a new Key Vault of the signed-in account and prints the new operator
 # document. The document is printed only after the key is stored and read back: otherwise nothing is usable.
 set -euo pipefail
+# Only in the Azure Cloud Shell: there the key goes straight into the owner's Key Vault, never onto a server
+if [ -z "${ACC_CLOUD:-}" ] || ! command -v az >/dev/null || ! az account show -o none 2>/dev/null; then
+  echo "Stopp: Diese Zeile gehört in die Azure Cloud Shell (portal.azure.com, Symbol >_ oben), nicht auf einen Server." >&2
+  echo "Es wurde nichts erzeugt." >&2
+  exit 1
+fi
 R=https://raw.githubusercontent.com/jetweasel/bus-hauptschluessel/main
 W=$(mktemp -d); cd "$W"; trap 'rm -rf "$W"' EXIT
 curl -fsSLO "$R/mainkey.py"; curl -fsSLO "$R/op-prod-aktuell.jwt"
