@@ -16,6 +16,11 @@ curl -fsSLO "$R/mainkey.py"; curl -fsSLO "$R/op-prod-aktuell.jwt"
 python3 mainkey.py new op-prod-aktuell.jwt jetweasel-bus-hauptschluessel.nk > op-neu.jwt
 G=jetweasel-schluessel; V=jw-bus-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')
 echo "Key Vault $V wird angelegt ..."
+# A fresh subscription has to enable Key Vault once (MissingSubscriptionRegistration); takes a minute or two
+if [ "$(az provider show -n Microsoft.KeyVault --query registrationState -o tsv 2>/dev/null)" != "Registered" ]; then
+  echo "Key Vault wird im Abo freigeschaltet (einmalig, ein bis zwei Minuten) ..."
+  az provider register -n Microsoft.KeyVault --wait -o none
+fi
 # Some regions take no new customers (RequestDisallowedByAzure): try the next one
 for L in germanywestcentral northeurope swedencentral francecentral westeurope; do
   az group show -n "$G" -o none 2>/dev/null || az group create -n "$G" -l "$L" -o none
