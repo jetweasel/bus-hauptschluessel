@@ -9,6 +9,11 @@ no packages, no network. The server never sees the main key, only the operator d
   python3 mainkey.py sign <current-op.jwt-file|-> [keyfile] [--signing-key O...]
       Re-sign with the existing main key, e.g. to add (or with --replace, to swap) a signing key.
 
+  python3 mainkey.py short op-neu.jwt
+      Print time, main key and signature of a new document, easy to read off a screenshot.
+  python3 mainkey.py rebuild <current-op.jwt-file> <time> <main key> <signature hex...>
+      Make the new document again from that (on the server side; the issuer checks the signature).
+
 The op.jwt printed contains public keys only; it may be pasted anywhere. The keyfile must stay with the owner.
 """
 import base64
@@ -139,15 +144,36 @@ def claims_of(jwt):
     return json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
 
 
-def operator_jwt(seed, name, signing_keys, system_account):
-    """Self-signed operator JWT, same layout as jw-groups issuer.njwt.sign."""
-    pk = public_key(seed)
-    claims = {"iat": int(time.time()), "iss": pk, "name": name, "sub": pk,
+def unsigned(pk, iat, name, signing_keys, system_account):
+    """Header and claims of an operator JWT, same layout as jw-groups issuer.njwt.sign."""
+    claims = {"iat": iat, "iss": pk, "name": name, "sub": pk,
               "nats": {"type": "operator", "signing_keys": signing_keys, "system_account": system_account, "version": 2}}
     claims["jti"] = base64.b32encode(hashlib.sha256(json.dumps(claims, sort_keys=True).encode()).digest()).decode().rstrip("=")
     head = _b64(json.dumps({"typ": "JWT", "alg": "ed25519-nkey"}).encode())
-    body = _b64(json.dumps(claims).encode())
-    return f"{head}.{body}.{_b64(ed_sign(seed, f'{head}.{body}'.encode()))}"
+    return f"{head}.{_b64(json.dumps(claims).encode())}"
+
+
+def operator_jwt(seed, name, signing_keys, system_account):
+    """Self-signed operator JWT."""
+    msg = unsigned(public_key(seed), int(time.time()), name, signing_keys, system_account)
+    return f"{msg}.{_b64(ed_sign(seed, msg.encode()))}"
+
+
+def short(jwt):
+    """The parts of a new operator JWT that are not in the current one, easy to read off a phone screenshot:
+    time, main key (base32 with checksum) and signature in hex groups. `rebuild` makes the JWT from them."""
+    c = claims_of(jwt)
+    sig = base64.urlsafe_b64decode(jwt.split(".")[2] + "==").hex()
+    groups = [sig[i:i + 4] for i in range(0, len(sig), 4)]
+    lines = [" ".join(groups[i:i + 8]) for i in range(0, len(groups), 8)]
+    return "\n".join([f"ZEIT {c['iat']}", f"SCHLUESSEL {c['iss']}", "SIGNATUR", *lines])
+
+
+def rebuild(current, iat, pk, sig_hex, signing_keys=None):
+    """Operator JWT from `short` output and the current document (the bus and the issuer check the signature)."""
+    c, n = claims_of(current), claims_of(current)["nats"]
+    msg = unsigned(pk, int(iat), c.get("name", "jw"), signing_keys or list(n["signing_keys"]), n["system_account"])
+    return f"{msg}.{_b64(bytes.fromhex(sig_hex.replace(' ', '').replace(chr(10), '')))}"
 
 
 def _read_current(src):
@@ -160,6 +186,10 @@ def _read_current(src):
 
 
 def main(argv):
+    if argv[:1] == ["short"] and len(argv) == 2:
+        return print(short(open(argv[1]).read().strip()))
+    if argv[:1] == ["rebuild"] and len(argv) >= 5:
+        return print(rebuild(open(argv[1]).read(), argv[2], argv[3], "".join(argv[4:])))
     if len(argv) < 2 or argv[0] not in ("new", "sign"):
         raise SystemExit(__doc__)
     args = [a for a in argv[1:] if not a.startswith("--")]

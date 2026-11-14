@@ -32,5 +32,7 @@ done
 az keyvault secret set --vault-name "$V" -n bus-hauptschluessel --file jetweasel-bus-hauptschluessel.nk -o none
 [ "$(az keyvault secret show --vault-name "$V" -n bus-hauptschluessel --query value -o tsv | tr -d '\r\n')" = "$(tr -d '\n' < jetweasel-bus-hauptschluessel.nk)" ] \
   || { echo "FEHLER: Schlüssel im Key Vault stimmt nicht, Dokument verworfen" >&2; exit 1; }
+az keyvault secret set --vault-name "$V" -n bus-betreiberdokument --file op-neu.jwt -o none
 echo; echo "Hauptschlüssel gesichert: Key Vault $V, Geheimnis bus-hauptschluessel."
-echo "Diese Zeile in die Kachel einfügen:"; echo; cat op-neu.jwt
+echo "Screenshot von diesem Block an Emil (oder die Zeile mit eyJ ganz unten):"; echo
+python3 mainkey.py short op-neu.jwt; echo; cat op-neu.jwt
